@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cloud.google.com/go/bigtable"
 	"cloud.google.com/go/storage"
 	"context"
 	"encoding/json"
@@ -24,7 +25,7 @@ const (
 	TYPE        = "post"
 	PROJECT_ID  = "around-219518"
 	BT_INSTANCE = "around-post"
-	ES_URL      = "http://35.231.121.13:9200"
+	ES_URL      = "http://35.231.92.188:9200"
 	BUCKET_NAME = "post-images-219518"
 )
 
@@ -182,6 +183,7 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
 
 func handlerPost(w http.ResponseWriter, r *http.Request) {
 	//Parse from body of request to get a json object.
+
 	//fmt.Println("Received one post request")
 	//decoder := json.NewDecoder(r.Body)
 	//var p Post
@@ -210,7 +212,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received one post request %s\n", r.FormValue("message"))
 	lat, _ := strconv.ParseFloat(r.FormValue("lat"), 64)
 	lon, _ := strconv.ParseFloat(r.FormValue("lon"), 64)
-	p := &Post{
+	q := &Post{
 		User:    username.(string),
 		Message: r.FormValue("message"),
 		Location: Location{
@@ -219,7 +221,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	id := uuid.New()
+	idd := uuid.New()
 
 	file, _, err := r.FormFile("image")
 	if err != nil {
@@ -231,7 +233,7 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	_, attrs, err := saveToGCS(ctx, file, BUCKET_NAME, id)
+	_, attrs, err := saveToGCS(ctx, file, BUCKET_NAME, idd)
 	if err != nil {
 		http.Error(w, "GCS is not setup", http.StatusInternalServerError)
 		fmt.Printf("GCS is not setup %v\n", err)
@@ -239,13 +241,32 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Update the media link after saving to GCS
-	p.Url = attrs.MediaLink
+	q.Url = attrs.MediaLink
 
 	//Save to ES
-	saveToES(p, id)
+	saveToES(q, idd)
 
-	//Save to BigTable
-	//saveToBigTable(p, id)
+	bt_client, err := bigtable.NewClient(ctx, PROJECT_ID, BT_INSTANCE)
+	if err != nil {
+		panic(err)
+		return
+	}
+
+	tbl := bt_client.Open("post")
+	mut := bigtable.NewMutation()
+	t := bigtable.Now()
+
+	mut.Set("post", "user", t, []byte(q.User))
+	mut.Set("post", "message", t, []byte(q.Message))
+	mut.Set("location", "lat", t, []byte(strconv.FormatFloat(q.Location.Lat, 'f', -1, 64)))
+	mut.Set("location", "lon", t, []byte(strconv.FormatFloat(q.Location.Lon, 'f', -1, 64)))
+	err = tbl.Apply(ctx, idd, mut)
+	if err != nil {
+		panic(err)
+		return
+	}
+
+	fmt.Printf("Post is saved to BigTable: %s\n", q.Message)
 }
 
 func saveToGCS(ctx context.Context, r io.Reader, bucketName, name string) (*storage.ObjectHandle, *storage.ObjectAttrs, error) {
