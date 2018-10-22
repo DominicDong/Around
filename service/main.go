@@ -184,16 +184,16 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
 func handlerPost(w http.ResponseWriter, r *http.Request) {
 	//Parse from body of request to get a json object.
 
-	fmt.Println("Received one post request")
-	decoder := json.NewDecoder(r.Body)
-	var p Post
-	if err := decoder.Decode(&p); err != nil {
-		panic(err)
-		return
-	}
+	//fmt.Println("Received one post request")
+	//decoder := json.NewDecoder(r.Body)
+	//var p Post
+	//if err := decoder.Decode(&p); err != nil {
+	//	panic(err)
+	//	return
+	//}
 
-	id := uuid.New()
-	saveToES(&p, id)
+	//id := uuid.New()
+	//saveToES(&p, id)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
