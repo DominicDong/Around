@@ -1,13 +1,13 @@
 package main
 
 import (
-	elastic "gopkg.in/olivere/elastic.v3"
+	"gopkg.in/olivere/elastic.v3"
 
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
-	"regexp"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -17,10 +17,6 @@ const (
 	TYPE_USER = "user"
 )
 
-var (
-	usernamePattern = regexp.MustCompile(`^[a-z0-9_]+$`).MatchString
-)
-
 type User struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -28,7 +24,7 @@ type User struct {
 	Gender   string `json:"gender"`
 }
 
-//Check user validation info
+// checkUser checks whether user is valid
 func checkUser(username, password string) bool {
 	es_client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
 	if err != nil {
@@ -36,7 +32,7 @@ func checkUser(username, password string) bool {
 		return false
 	}
 
-	//Search with a term query
+	// Search with a term query
 	termQuery := elastic.NewTermQuery("username", username)
 	queryResult, err := es_client.Search().
 		Index(INDEX).
@@ -53,19 +49,20 @@ func checkUser(username, password string) bool {
 		u := item.(User)
 		return u.Password == password && u.Username == username
 	}
-
-	//if no user exists, return false
+	// If no user exist, return false.
 	return false
 }
 
-//add new user function
+// Add a new user. Return true if successfully.
 func addUser(user User) bool {
+	// In theory, BigTable is a better option for storing user credentials than ES. However,
+	// since BT is more expensive than ES so usually students will disable BT.
 	es_client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
 	if err != nil {
 		fmt.Printf("ES is not setup %v\n", err)
 		return false
 	}
-
+	// Search with a term query
 	termQuery := elastic.NewTermQuery("username", user.Username)
 	queryResult, err := es_client.Search().
 		Index(INDEX).
@@ -76,12 +73,12 @@ func addUser(user User) bool {
 		fmt.Printf("ES query failed %v\n", err)
 		return false
 	}
-
 	if queryResult.TotalHits() > 0 {
-		fmt.Printf("User %s already exists, cannot create duplicate user.\n", user.Username)
+		fmt.Printf("User %s has existed, cannot create duplicate user.\n", user.Username)
 		return false
 	}
 
+	// Save it to index
 	_, err = es_client.Index().
 		Index(INDEX).
 		Type(TYPE_USER).
@@ -90,14 +87,13 @@ func addUser(user User) bool {
 		Refresh(true).
 		Do()
 	if err != nil {
-		fmt.Printf("ES save user failed %v\n", err)
+		fmt.Printf("ES save failed %v\n", err)
 		return false
 	}
-
 	return true
 }
 
-//handle successful signup
+// If signup is successful, a new session is created.
 func signupHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received one signup request")
 
@@ -107,11 +103,12 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 		return
 	}
+	u.Username = strings.ToLower(u.Username)
 
-	if u.Username != "" && u.Password != "" && usernamePattern(u.Username) {
+	if u.Username != "" && u.Password != "" {
 		if addUser(u) {
-			fmt.Println("User added successfully!")
-			w.Write([]byte("User added successfully!"))
+			fmt.Println("User added successfully.")
+			w.Write([]byte("User added successfully."))
 		} else {
 			fmt.Println("Failed to add a new user.")
 			http.Error(w, "Failed to add a new user", http.StatusInternalServerError)
@@ -122,10 +119,10 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("Access-Control-Allow_Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
-//When login succeed, new token to create
+// If login is successful, a new token is created.
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received one login request")
 
@@ -135,18 +132,19 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 		return
 	}
+	u.Username = strings.ToLower(u.Username)
 
 	if checkUser(u.Username, u.Password) {
 		token := jwt.New(jwt.SigningMethodHS256)
 		claims := token.Claims.(jwt.MapClaims)
-		//Set token claims
+		/* Set token claims */
 		claims["username"] = u.Username
 		claims["exp"] = time.Now().Add(time.Hour * 24).Unix()
 
-		//sign the token with our secret
+		/* Sign the token with our secret */
 		tokenString, _ := token.SignedString(mySigningKey)
 
-		//write token to the browser window
+		/* Finally, write the token to the browser window */
 		w.Write([]byte(tokenString))
 	} else {
 		fmt.Println("Invalid password or username.")
