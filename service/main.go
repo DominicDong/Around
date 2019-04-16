@@ -21,13 +21,17 @@ import (
 )
 
 const (
-	DISTANCE    = "200km"
 	INDEX       = "around"
 	TYPE        = "post"
-	PROJECT_ID  = "around-219518"
+	DISTANCE    = "200km"
 	BT_INSTANCE = "around-post"
-	ES_URL      = "http://35.231.92.188:9200"
-	BUCKET_NAME = "post-images-219518"
+	ES_URL          = "http://34.211.21.63:9200"
+	ENABLE_MEMCACHE = false
+	ENABLE_BIGTABLE = false
+	ENABLE_AUTH     = true
+	REDIS_URL       = "redis-18610.c1.us-central1-2.gce.cloud.redislabs.com:18610"
+	API_PREFIX      = "/api/v1"
+
 )
 
 var (
